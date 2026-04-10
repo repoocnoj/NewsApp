@@ -1,0 +1,174 @@
+// NewsApp Prisma schema
+// SQLite by default for a zero-config dev experience.
+// Switch `provider` to "postgresql" for production deploys.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id             String           @id @default(cuid())
+  name           String?
+  email          String           @unique
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+  preference     UserPreference?
+  bookmarks      Bookmark[]
+  conversations  Conversation[]
+  articleSignals ArticleSignal[]
+}
+
+model UserPreference {
+  id                  String   @id @default(cuid())
+  user                User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId              String   @unique
+  // JSON-encoded arrays (SQLite-friendly)
+  followedTopics      String   @default("[]")
+  preferredSourceIds  String   @default("[]")
+  excludedSourceIds   String   @default("[]")
+  onboardingCompleted Boolean  @default(false)
+  updatedAt           DateTime @updatedAt
+}
+
+model Source {
+  id              String    @id @default(cuid())
+  slug            String    @unique
+  name            String
+  homepageUrl     String
+  rssUrl          String?
+  region          String?
+  // "high" | "mixed" | "state-affiliated" | "opinion"
+  trustTier       String    @default("high")
+  // JSON array: ["west","center","state-affiliated","opinion"]
+  perspectiveTags String    @default("[]")
+  // "rss" | "mock" | "api"
+  ingestStrategy  String    @default("rss")
+  isActive        Boolean   @default(true)
+  createdAt       DateTime  @default(now())
+  articles        Article[]
+}
+
+model TopicCluster {
+  id                String              @id @default(cuid())
+  slug              String              @unique
+  label             String
+  summary           String              @default("")
+  canonicalQuestion String              @default("")
+  createdAt         DateTime            @default(now())
+  articles          Article[]
+  timelineEvents    TopicTimelineEvent[]
+  conversations     Conversation[]
+}
+
+model Article {
+  id             String   @id @default(cuid())
+  source         Source   @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  sourceId       String
+  url            String   @unique
+  headline       String
+  author         String?
+  publishedAt    DateTime
+  topicCluster   TopicCluster? @relation(fields: [topicClusterId], references: [id])
+  topicClusterId String?
+
+  // AI-enriched content (cached)
+  summaryShort String @default("")
+  summaryLong  String @default("")
+  keyPointsJson String @default("[]") // JSON array<string>
+  entitiesJson  String @default("[]") // JSON array<string>
+  topicTagsJson String @default("[]") // JSON array<string>
+
+  // Ingested body
+  articleText String @default("")
+  previewText String @default("")
+  imageUrl    String?
+
+  rawIngestedAt DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  relationshipsOut ArticleRelationship[] @relation("fromArticle")
+  relationshipsIn  ArticleRelationship[] @relation("toArticle")
+  bookmarks        Bookmark[]
+  conversations    Conversation[]
+  signals          ArticleSignal[]
+
+  @@index([publishedAt])
+  @@index([topicClusterId])
+}
+
+model ArticleRelationship {
+  id               String  @id @default(cuid())
+  fromArticle      Article @relation("fromArticle", fields: [fromArticleId], references: [id], onDelete: Cascade)
+  fromArticleId    String
+  toArticle        Article @relation("toArticle", fields: [toArticleId], references: [id], onDelete: Cascade)
+  toArticleId      String
+  // "related" | "contrarian" | "primary"
+  relationshipType String
+  score            Float   @default(0)
+
+  @@unique([fromArticleId, toArticleId, relationshipType])
+}
+
+model TopicTimelineEvent {
+  id             String       @id @default(cuid())
+  topicCluster   TopicCluster @relation(fields: [topicClusterId], references: [id], onDelete: Cascade)
+  topicClusterId String
+  eventDate      DateTime
+  title          String
+  description    String       @default("")
+  // JSON array of { url, label }
+  sourceRefsJson String       @default("[]")
+
+  @@index([topicClusterId, eventDate])
+}
+
+model Bookmark {
+  id        String   @id @default(cuid())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String
+  article   Article  @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  articleId String
+  createdAt DateTime @default(now())
+
+  @@unique([userId, articleId])
+}
+
+model ArticleSignal {
+  id        String   @id @default(cuid())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String
+  article   Article  @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  articleId String
+  // "like" | "dislike" | "view"
+  kind      String
+  createdAt DateTime @default(now())
+
+  @@unique([userId, articleId, kind])
+}
+
+model Conversation {
+  id             String        @id @default(cuid())
+  user           User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId         String
+  article        Article?      @relation(fields: [articleId], references: [id], onDelete: SetNull)
+  articleId      String?
+  topicCluster   TopicCluster? @relation(fields: [topicClusterId], references: [id], onDelete: SetNull)
+  topicClusterId String?
+  createdAt      DateTime      @default(now())
+  messages       Message[]
+}
+
+model Message {
+  id             String       @id @default(cuid())
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  conversationId String
+  // "user" | "assistant" | "system"
+  role           String
+  content        String
+  createdAt      DateTime     @default(now())
+}

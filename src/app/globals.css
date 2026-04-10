@@ -1,0 +1,60 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: dark;
+  }
+  html,
+  body {
+    background: #0b0d10;
+    color: #e7ecf3;
+    -webkit-font-smoothing: antialiased;
+  }
+  ::selection {
+    background: rgba(124, 196, 255, 0.25);
+  }
+}
+
+@layer components {
+  .card {
+    @apply bg-bg-subtle border border-line rounded-2xl shadow-soft;
+  }
+  .card-hover {
+    @apply transition-colors hover:border-line-strong hover:bg-bg-elevated;
+  }
+  .chip {
+    @apply inline-flex items-center gap-1 rounded-full border border-line px-2.5 py-0.5 text-xs text-ink-muted;
+  }
+  .chip-brand {
+    @apply inline-flex items-center gap-1 rounded-full border border-brand/30 bg-brand/10 px-2.5 py-0.5 text-xs text-brand;
+  }
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+  .btn-primary {
+    @apply btn bg-brand text-[#0a1220] hover:bg-brand-strong;
+  }
+  .btn-ghost {
+    @apply btn border border-line text-ink hover:bg-bg-elevated;
+  }
+  .btn-subtle {
+    @apply btn bg-bg-elevated text-ink hover:bg-line;
+  }
+  .input {
+    @apply w-full rounded-xl border border-line bg-bg-subtle px-3 py-2 text-sm text-ink placeholder:text-ink-faint focus:outline-none focus:ring-2 focus:ring-brand/40;
+  }
+  .label {
+    @apply text-xs font-medium uppercase tracking-wide text-ink-faint;
+  }
+  .prose-news {
+    @apply text-ink leading-relaxed;
+  }
+  .prose-news p {
+    @apply mb-4;
+  }
+  .divider {
+    @apply border-line;
+  }
+}
