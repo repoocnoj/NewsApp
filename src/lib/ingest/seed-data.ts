@@ -45,25 +45,28 @@ export interface SeedTimelineEvent {
 
 export const SOURCES: SeedSource[] = [
   // ---------- Global wires (gold standard, mostly open) ----------
+  // Reuters retired their public RSS years ago (feeds.reuters.com is
+  // dead). AP's RSS URLs move frequently and often return 404. Both
+  // remain in the source list for categorization and manual pointing,
+  // but are marked `mock` so live ingestion skips them until a licensed
+  // integration (Reuters Connect, AP's API) is wired up.
   {
     slug: "reuters",
     name: "Reuters",
     homepageUrl: "https://www.reuters.com",
-    rssUrl: "https://feeds.reuters.com/reuters/topNews",
     region: "global",
     trustTier: "high",
     perspectiveTags: ["wire", "center"],
-    ingestStrategy: "rss",
+    ingestStrategy: "mock",
   },
   {
     slug: "ap",
     name: "Associated Press",
     homepageUrl: "https://apnews.com",
-    rssUrl: "https://apnews.com/hub/ap-top-news/rss",
     region: "global",
     trustTier: "high",
     perspectiveTags: ["wire", "center"],
-    ingestStrategy: "rss",
+    ingestStrategy: "mock",
   },
   {
     slug: "afp",
