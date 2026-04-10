@@ -2,8 +2,9 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { RefreshCw } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { saveSettingsAction } from "./actions";
+import { refreshArticlesAction, saveSettingsAction } from "./actions";
 
 export function SettingsForm({
   topics,
@@ -30,6 +31,8 @@ export function SettingsForm({
   const [excludedSources, setExcludedSources] = useState<string[]>(initial.excludedSources);
   const [pending, start] = useTransition();
   const [saved, setSaved] = useState(false);
+  const [refreshing, startRefresh] = useTransition();
+  const [refreshResult, setRefreshResult] = useState<string | null>(null);
 
   function toggle(list: string[], setter: (v: string[]) => void, id: string) {
     setter(list.includes(id) ? list.filter((x) => x !== id) : [...list, id]);
@@ -45,6 +48,31 @@ export function SettingsForm({
       });
       setSaved(true);
       router.refresh();
+    });
+  }
+
+  function refresh() {
+    setRefreshResult(null);
+    startRefresh(async () => {
+      try {
+        const result = await refreshArticlesAction();
+        if (result.fetched > 0) {
+          setRefreshResult(
+            `✓ Fetched ${result.fetched} new article${result.fetched === 1 ? "" : "s"}. Open the Feed to see them.`,
+          );
+        } else if (result.failed > 0) {
+          setRefreshResult(
+            `Fetched 0 new articles (${result.failed} feed error${result.failed === 1 ? "" : "s"}). Some publishers block RSS — try again later or check the logs.`,
+          );
+        } else {
+          setRefreshResult(
+            `No new articles from the active sources right now. Try again in a few minutes.`,
+          );
+        }
+        router.refresh();
+      } catch (err) {
+        setRefreshResult(`Refresh failed: ${(err as Error).message}`);
+      }
     });
   }
 
@@ -137,6 +165,30 @@ export function SettingsForm({
               </div>
             );
           })}
+        </div>
+      </section>
+
+      <section className="card p-5">
+        <h2 className="text-lg font-semibold">Pull latest articles</h2>
+        <p className="text-sm text-ink-muted">
+          Fetch the newest articles from every active source with an open RSS feed.
+          Several major publishers (Bloomberg, Foreign Affairs, AFP) require a licensed
+          integration and are seeded with mock data only. Others (WSJ, NYT, FT, Economist)
+          publish RSS but headlines and previews only — full article text is paywalled.
+        </p>
+        <div className="mt-4 flex items-center gap-3">
+          <button
+            type="button"
+            disabled={refreshing}
+            onClick={refresh}
+            className="btn-ghost"
+          >
+            <RefreshCw className={cn("h-4 w-4", refreshing && "animate-spin")} />
+            {refreshing ? "Fetching…" : "Refresh articles now"}
+          </button>
+          {refreshResult && (
+            <span className="text-sm text-ink-muted">{refreshResult}</span>
+          )}
         </div>
       </section>
 
