@@ -87,6 +87,13 @@ model Article {
   entitiesJson  String @default("[]") // JSON array<string>
   topicTagsJson String @default("[]") // JSON array<string>
 
+  // Lazy caches populated on first view of the article detail page.
+  // Cleared implicitly by ingestion of new articles (we key off enrichedAt).
+  synthesisJson          String    @default("") // comparative synthesis
+  contrarianJson         String    @default("") // contrarian-view synthesis
+  suggestedQuestionsJson String    @default("[]") // JSON array<string>
+  enrichedAt             DateTime?
+
   // Ingested body
   articleText String @default("")
   previewText String @default("")

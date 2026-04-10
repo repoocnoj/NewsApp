@@ -3,7 +3,10 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/session";
 import { ai } from "@/lib/ai";
+import { findRelatedArticles } from "@/lib/article-enrich";
 import type { ChatMessage } from "@/lib/ai/types";
+
+export const maxDuration = 60;
 
 const BodySchema = z.object({
   articleId: z.string().min(1),
@@ -42,17 +45,15 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "not_found" }, { status: 404 });
   }
 
-  // Gather related articles to ground the chat
-  const relationships = await db.articleRelationship.findMany({
-    where: { fromArticleId: article.id },
-    include: { toArticle: { include: { source: true } } },
-    take: 8,
-  });
-  const related = relationships.map((r) => ({
-    source: r.toArticle.source.name,
-    headline: r.toArticle.headline,
-    url: r.toArticle.url,
-    summary: r.toArticle.summaryShort,
+  // Dynamically find related coverage across other sources so the chat
+  // answer is grounded in what multiple outlets are saying — not just
+  // pre-seeded relationships.
+  const relatedSet = await findRelatedArticles(article, { limit: 6 });
+  const related = [...relatedSet.related, ...relatedSet.contrarian].map((r) => ({
+    source: r.article.source.name,
+    headline: r.article.headline,
+    url: r.article.url,
+    summary: r.article.summaryShort || r.article.summaryLong,
   }));
 
   // Ensure a persistent conversation so we can reconstruct later

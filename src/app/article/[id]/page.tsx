@@ -8,6 +8,11 @@ import { formatRelative, formatDate, safeParseJson } from "@/lib/utils";
 import { BookmarkButton } from "@/components/bookmark-button";
 import { ChatPanel } from "@/components/chat-panel";
 import { SuggestedQuestions } from "@/components/suggested-questions";
+import {
+  enrichArticleAnalysis,
+  enrichArticleSummary,
+  findRelatedArticles,
+} from "@/lib/article-enrich";
 
 export const dynamic = "force-dynamic";
 
@@ -20,7 +25,7 @@ export default async function ArticlePage({
   if (!user) redirect("/signin");
 
   const { id } = await params;
-  const article = await db.article.findUnique({
+  const articleRaw = await db.article.findUnique({
     where: { id },
     include: {
       source: true,
@@ -31,7 +36,13 @@ export default async function ArticlePage({
       },
     },
   });
-  if (!article) return notFound();
+  if (!articleRaw) return notFound();
+
+  // Strip off the non-Article relations before passing to enrichment helpers.
+  const { topicCluster, ...articleBase } = articleRaw;
+  // Lazy AI summary: first view runs a real summarization call against the
+  // configured provider and caches the result on the row.
+  const article = await enrichArticleSummary(articleBase);
 
   // Record view signal
   await db.articleSignal.upsert({
@@ -44,83 +55,54 @@ export default async function ArticlePage({
     where: { userId_articleId: { userId: user.id, articleId: article.id } },
   });
 
-  // Gather related + contrarian articles through ArticleRelationship
-  const relationships = await db.articleRelationship.findMany({
-    where: { fromArticleId: article.id },
-    include: {
-      toArticle: { include: { source: true } },
-    },
-  });
-  const related = relationships
-    .filter((r) => r.relationshipType === "related")
-    .map((r) => r.toArticle);
-  const contrarianArticles = relationships
-    .filter((r) => r.relationshipType === "contrarian")
-    .map((r) => r.toArticle);
+  // Dynamically find related coverage across other sources by tokenizing
+  // headlines/summaries. This works for any ingested article, not just
+  // the seeded topic clusters.
+  const relatedSet = await findRelatedArticles(article, { limit: 6 });
+  const related = relatedSet.related.map((r) => r.article);
+  const contrarianArticles = relatedSet.contrarian.map((r) => r.article);
 
-  // Kick off AI syntheses. These run server-side and their outputs are
-  // intentionally not persisted for this MVP (computed each load). In
-  // production, cache on the cluster or article row.
-  const topicLabel = article.topicCluster?.label ?? article.headline;
-  const [comparative, contrarian, timeline, suggestions] = await Promise.all([
-    related.length
-      ? ai.comparativeSynthesis({
-          topic: topicLabel,
-          articles: [article, ...related].map((a) => ({
-            source: (a as any).source?.name ?? "Unknown",
-            headline: a.headline,
-            summary: a.summaryShort,
-          })),
-        })
-      : Promise.resolve({
-          commonFacts: [],
-          disagreements: [],
-          framingDifferences: [],
-          missingContext: [],
-        }),
-    contrarianArticles.length
-      ? ai.contrarianView({
-          topic: topicLabel,
-          mainstreamSummary: article.summaryShort,
-          contrarianArticles: contrarianArticles.map((a) => ({
-            source: (a as any).source?.name ?? "Unknown",
-            headline: a.headline,
-            url: a.url,
-            summary: a.summaryShort,
-          })),
-        })
-      : Promise.resolve({ summary: "", whyItDiffers: "", supportingUrls: [] }),
-    article.topicCluster && article.topicCluster.timelineEvents.length
-      ? Promise.resolve(
-          article.topicCluster.timelineEvents.map((e) => ({
-            date: e.eventDate.toISOString(),
-            title: e.title,
-            description: e.description,
-            sources: safeParseJson<Array<{ url: string; label: string }>>(
-              e.sourceRefsJson,
-              [],
-            ),
-          })),
-        )
-      : ai.timeline({
-          topic: topicLabel,
-          articles: [article, ...related].map((a) => ({
-            source: (a as any).source?.name ?? "Unknown",
-            url: a.url,
-            headline: a.headline,
-            publishedAt: a.publishedAt.toISOString(),
-            summary: a.summaryShort,
-          })),
-        }),
-    ai.suggestedQuestions({
-      topic: topicLabel,
-      headline: article.headline,
-      summary: article.summaryShort,
-    }),
-  ]);
+  // AI synthesis over the dynamically-computed related set, cached on the
+  // article row for 6 hours.
+  const { synthesis: comparative, contrarian, suggestions } = await enrichArticleAnalysis(
+    article,
+    relatedSet,
+  );
+
+  // Timeline: use seeded events if this article belongs to a seeded
+  // cluster; otherwise ask the AI to synthesize one from the related set.
+  const topicLabel = topicCluster?.label ?? article.headline;
+  const timeline =
+    topicCluster && topicCluster.timelineEvents.length > 0
+      ? topicCluster.timelineEvents.map((e) => ({
+          date: e.eventDate.toISOString(),
+          title: e.title,
+          description: e.description,
+          sources: safeParseJson<Array<{ url: string; label: string }>>(
+            e.sourceRefsJson,
+            [],
+          ),
+        }))
+      : related.length > 0
+        ? await ai.timeline({
+            topic: topicLabel,
+            articles: [article, ...related].map((a) => ({
+              source: a.source.name,
+              url: a.url,
+              headline: a.headline,
+              publishedAt: a.publishedAt.toISOString(),
+              summary: a.summaryShort,
+            })),
+          })
+        : [];
 
   const keyPoints = safeParseJson<string[]>(article.keyPointsJson, []);
   const topicTags = safeParseJson<string[]>(article.topicTagsJson, []);
+
+  const aiProvider = (process.env.AI_PROVIDER || "mock").toLowerCase();
+  const hasRealAI =
+    (aiProvider === "openai" && !!process.env.OPENAI_API_KEY) ||
+    (aiProvider === "anthropic" && !!process.env.ANTHROPIC_API_KEY);
 
   return (
     <div className="container grid gap-8 py-8 lg:grid-cols-[1fr_380px]">
@@ -144,12 +126,12 @@ export default async function ArticlePage({
           <h1 className="text-3xl font-semibold tracking-tight md:text-4xl">
             {article.headline}
           </h1>
-          {article.topicCluster && (
+          {topicCluster && (
             <Link
               href={`/feed`}
               className="inline-flex items-center gap-2 text-sm text-brand"
             >
-              #{article.topicCluster.label}
+              #{topicCluster.label}
             </Link>
           )}
           <div className="flex flex-wrap gap-2 pt-2">
@@ -165,6 +147,18 @@ export default async function ArticlePage({
             <ShareButton url={article.url} headline={article.headline} />
           </div>
         </header>
+
+        {/* AI provider disclosure */}
+        {!hasRealAI && (
+          <div className="rounded-xl border border-dashed border-line bg-bg-subtle p-3 text-xs text-ink-muted">
+            <span className="font-medium text-ink">Mock AI mode.</span> Summaries and
+            cross-source synthesis below are generated by a deterministic local
+            fallback — not a real model. To enable live AI, set{" "}
+            <code className="rounded bg-bg-elevated px-1">AI_PROVIDER=anthropic</code> and{" "}
+            <code className="rounded bg-bg-elevated px-1">ANTHROPIC_API_KEY=…</code>{" "}
+            (or the OpenAI equivalents) in Vercel env vars, then redeploy.
+          </div>
+        )}
 
         {/* AI Summary */}
         <Section title="AI summary" subtitle="Neutral, grounded, citations below.">
