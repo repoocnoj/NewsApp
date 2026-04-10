@@ -105,8 +105,8 @@ export default async function ArticlePage({
     (aiProvider === "anthropic" && !!process.env.ANTHROPIC_API_KEY);
 
   return (
-    <div className="container grid gap-8 py-8 lg:grid-cols-[1fr_380px]">
-      <article className="space-y-8">
+    <div className="container grid gap-6 py-6 sm:py-8 lg:grid-cols-[1fr_380px] lg:gap-8">
+      <article className="min-w-0 space-y-6 sm:space-y-8">
         {/* Header */}
         <header className="space-y-3">
           <div className="flex flex-wrap items-center gap-2 text-xs text-ink-faint">
@@ -123,7 +123,7 @@ export default async function ArticlePage({
             <span>·</span>
             <span>{formatDate(article.publishedAt)}</span>
           </div>
-          <h1 className="text-3xl font-semibold tracking-tight md:text-4xl">
+          <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl md:text-4xl">
             {article.headline}
           </h1>
           {topicCluster && (
@@ -371,11 +371,8 @@ export default async function ArticlePage({
         )}
       </article>
 
-      <aside className="space-y-6 lg:sticky lg:top-16 lg:h-fit">
-        <ChatPanel
-          articleId={article.id}
-          articleHeadline={article.headline}
-        />
+      <aside className="space-y-6 lg:sticky lg:top-16 lg:h-fit lg:self-start">
+        <ChatPanel articleId={article.id} articleHeadline={article.headline} />
         <SuggestedQuestions
           articleId={article.id}
           questions={suggestions.questions || []}

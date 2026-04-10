@@ -58,8 +58,8 @@ export function RefreshFeedButton({
   }
 
   return (
-    <div className="flex items-center gap-3">
-      <div className="flex flex-col items-end text-xs text-ink-faint">
+    <div className="flex flex-wrap items-center justify-between gap-2 sm:justify-end sm:gap-3">
+      <div className="flex flex-col text-xs text-ink-faint sm:items-end">
         {lastRefreshedAt && !pending && result.kind === "idle" && (
           <span>Last updated {formatRelative(lastRefreshedAt)}</span>
         )}
@@ -87,7 +87,7 @@ export function RefreshFeedButton({
         onClick={refresh}
         disabled={pending}
         className={cn(
-          "btn-primary min-w-[130px]",
+          "btn-primary min-w-[130px] shrink-0",
           pending && "cursor-wait opacity-80",
         )}
         title="Pull fresh articles from every active RSS source"

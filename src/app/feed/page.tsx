@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { Suspense } from "react";
 import Link from "next/link";
 import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/session";
@@ -27,40 +28,52 @@ export default async function FeedPage({
   const { category } = await searchParams;
   const activeCategory = category && CATEGORIES.some((c) => c.slug === category) ? category : "top";
 
+  // Core feed query. Never allowed to fall back silently — if this fails,
+  // the error boundary (`error.tsx`) catches it and the user sees a real
+  // message instead of the cryptic Next.js digest screen.
   const articles = await getPersonalizedFeed(user.id, {
     limit: 40,
     category: activeCategory,
   });
 
-  // Pull a broader recent window just to compute category counts and
-  // trending entities (not for display). Kept cheap: 300 rows, headlines
-  // + summaries only.
-  const recentSince = new Date(Date.now() - 48 * 60 * 60 * 1000);
-  const recentForStats = await db.article.findMany({
-    where: { publishedAt: { gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) } },
-    select: {
-      headline: true,
-      summaryShort: true,
-      topicTagsJson: true,
-      publishedAt: true,
-    },
-    orderBy: { publishedAt: "desc" },
-    take: 300,
-  });
-  const normalized = recentForStats.map((a) => ({
-    headline: a.headline,
-    summaryShort: a.summaryShort,
-    topicTags: safeParseJson<string[]>(a.topicTagsJson, []),
-    publishedAt: a.publishedAt,
-  }));
-  const counts = countPerCategory(normalized, { since: recentSince });
-  const trending = computeTrendingEntities(normalized, { limit: 8, since: recentSince });
-
-  const categoryChips = CATEGORIES.map((c) => ({
-    slug: c.slug,
-    label: c.label,
-    count: counts[c.slug] || 0,
-  }));
+  // Stats (category counts + trending entities) are cosmetic. Wrap in
+  // try/catch so a single bad article can never crash the whole page.
+  let categoryChips: Array<{ slug: string; label: string; count: number }> = [];
+  let trending: Array<{ label: string; count: number }> = [];
+  try {
+    const recentSince = new Date(Date.now() - 48 * 60 * 60 * 1000);
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    const recentForStats = await db.article.findMany({
+      where: { publishedAt: { gte: sevenDaysAgo } },
+      select: {
+        headline: true,
+        summaryShort: true,
+        topicTagsJson: true,
+        publishedAt: true,
+      },
+      orderBy: { publishedAt: "desc" },
+      take: 300,
+    });
+    const normalized = recentForStats.map((a) => ({
+      headline: a.headline ?? "",
+      summaryShort: a.summaryShort ?? "",
+      topicTags: safeParseJson<string[]>(a.topicTagsJson, []),
+      publishedAt: a.publishedAt,
+    }));
+    const counts = countPerCategory(normalized, { since: recentSince });
+    trending = computeTrendingEntities(normalized, { limit: 8, since: recentSince });
+    categoryChips = CATEGORIES.map((c) => ({
+      slug: c.slug,
+      label: c.label,
+      count: counts[c.slug] || 0,
+    }));
+  } catch (err) {
+    console.error("[feed] stats computation failed:", (err as Error).message);
+    // Fall back to plain category chips with zero counts — still lets the
+    // user navigate between categories even if trending is broken.
+    categoryChips = CATEGORIES.map((c) => ({ slug: c.slug, label: c.label, count: 0 }));
+    trending = [];
+  }
 
   const latestArticle = await db.article.findFirst({
     orderBy: { rawIngestedAt: "desc" },
@@ -79,13 +92,13 @@ export default async function FeedPage({
     CATEGORIES.find((c) => c.slug === activeCategory)?.label ?? "Top stories";
 
   return (
-    <div className="container grid gap-8 py-8 lg:grid-cols-[1fr_280px]">
-      <div>
+    <div className="container grid gap-8 py-6 sm:py-8 lg:grid-cols-[1fr_280px]">
+      <div className="min-w-0">
         {/* Header with refresh button */}
-        <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
+        <div className="mb-5 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <div className="label">Your feed</div>
-            <h1 className="mt-1 text-3xl font-semibold tracking-tight">
+            <h1 className="mt-1 text-2xl font-semibold tracking-tight sm:text-3xl">
               {activeCategoryLabel}
             </h1>
             <p className="mt-1 text-sm text-ink-muted">
@@ -97,13 +110,17 @@ export default async function FeedPage({
           />
         </div>
 
-        {/* Category + trending filter bar */}
+        {/* Category + trending filter bar. Wrapped in Suspense because
+            FeedFilters uses useSearchParams which needs a boundary on
+            Next.js 15.5+. */}
         <div className="mb-6">
-          <FeedFilters
-            categories={categoryChips}
-            activeCategory={activeCategory}
-            trending={trending}
-          />
+          <Suspense fallback={<div className="h-10" />}>
+            <FeedFilters
+              categories={categoryChips}
+              activeCategory={activeCategory}
+              trending={trending}
+            />
+          </Suspense>
         </div>
 
         {articles.length === 0 ? (
@@ -161,8 +178,8 @@ export default async function FeedPage({
                   href={`/search?q=${encodeURIComponent(t.label)}`}
                   className="flex items-center justify-between rounded-lg px-2 py-1 text-ink-muted hover:bg-bg-elevated hover:text-ink"
                 >
-                  <span>{t.label}</span>
-                  <span className="text-xs text-ink-faint">{t.count}</span>
+                  <span className="truncate">{t.label}</span>
+                  <span className="ml-2 shrink-0 text-xs text-ink-faint">{t.count}</span>
                 </Link>
               ))}
             </div>

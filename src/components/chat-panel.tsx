@@ -75,7 +75,7 @@ export function ChatPanel({
   }, [messages, pending]);
 
   return (
-    <div className="card flex h-[520px] flex-col">
+    <div className="card flex h-[min(70vh,560px)] min-h-[420px] flex-col">
       <div className="flex items-center gap-2 border-b border-line p-4">
         <Sparkles className="h-4 w-4 text-brand" />
         <div className="flex-1">
