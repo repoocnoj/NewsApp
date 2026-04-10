@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { safeParseJson } from "@/lib/utils";
+import { articleMatchesCategory } from "@/lib/categories";
 
 /**
  * Lightweight personalized ranking:
@@ -14,8 +15,12 @@ import { safeParseJson } from "@/lib/utils";
  * Simple, robust, and explainable. Good enough for an MVP while leaving
  * the door open to embeddings/vector retrieval later.
  */
-export async function getPersonalizedFeed(userId: string, opts?: { limit?: number }) {
+export async function getPersonalizedFeed(
+  userId: string,
+  opts?: { limit?: number; category?: string },
+) {
   const limit = opts?.limit ?? 30;
+  const category = opts?.category && opts.category !== "top" ? opts.category : undefined;
 
   const pref = await db.userPreference.findUnique({ where: { userId } });
   const followedTopics = pref ? safeParseJson<string[]>(pref.followedTopics, []) : [];
@@ -30,11 +35,26 @@ export async function getPersonalizedFeed(userId: string, opts?: { limit?: numbe
     where: excludedSources.length ? { NOT: { sourceId: { in: excludedSources } } } : {},
     include: { source: true, topicCluster: true },
     orderBy: { publishedAt: "desc" },
-    take: 200,
+    // Larger window when a category is applied, so filtering has enough
+    // to work with after excluding non-matching articles.
+    take: category ? 500 : 200,
   });
 
+  const filtered = category
+    ? articles.filter((a) =>
+        articleMatchesCategory(
+          {
+            headline: a.headline,
+            summaryShort: a.summaryShort,
+            topicTags: safeParseJson<string[]>(a.topicTagsJson, []),
+          },
+          category,
+        ),
+      )
+    : articles;
+
   const now = Date.now();
-  const ranked = articles
+  const ranked = filtered
     .map((a) => {
       const ageHours = Math.max(1, (now - a.publishedAt.getTime()) / (1000 * 60 * 60));
       const recency = 48 / (ageHours + 24); // 0..1-ish

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Send, Sparkles } from "lucide-react";
+import { Send, Sparkles, AlertTriangle } from "lucide-react";
 
 type Message = { role: "user" | "assistant"; content: string };
 
@@ -15,6 +15,7 @@ export function ChatPanel({
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [pending, setPending] = useState(false);
+  const [lastProvider, setLastProvider] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -34,16 +35,29 @@ export function ChatPanel({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ articleId, message: content, history: messages }),
       });
-      if (!res.ok) throw new Error(await res.text());
-      const data = (await res.json()) as { reply: string };
+      if (!res.ok) {
+        const errorBody = (await res.json().catch(() => null)) as
+          | { error?: string; detail?: string; provider?: string; hint?: string }
+          | null;
+        throw new Error(
+          errorBody?.detail
+            ? `${errorBody.error ?? "error"}: ${errorBody.detail}${
+                errorBody.hint ? ` — ${errorBody.hint}` : ""
+              }`
+            : "Request failed",
+        );
+      }
+      const data = (await res.json()) as { reply: string; provider?: string };
+      setLastProvider(data.provider ?? null);
       setMessages((m) => [...m, { role: "assistant", content: data.reply }]);
     } catch (err) {
       setMessages((m) => [
         ...m,
         {
           role: "assistant",
-          content:
-            "Something went wrong generating a response. Check your AI provider config or try again.",
+          content: `Something went wrong generating a response. ${
+            (err as Error).message
+          }`,
         },
       ]);
     } finally {
@@ -64,11 +78,21 @@ export function ChatPanel({
     <div className="card flex h-[520px] flex-col">
       <div className="flex items-center gap-2 border-b border-line p-4">
         <Sparkles className="h-4 w-4 text-brand" />
-        <div>
+        <div className="flex-1">
           <div className="text-sm font-semibold">Ask about this story</div>
           <div className="text-xs text-ink-faint line-clamp-1">{articleHeadline}</div>
         </div>
       </div>
+      {lastProvider === "mock" && (
+        <div className="flex items-start gap-2 border-b border-accent-warn/30 bg-accent-warn/5 px-4 py-2 text-xs text-accent-warn">
+          <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+          <span>
+            Answered by the mock provider, not a real model. Hit{" "}
+            <code className="rounded bg-bg-elevated px-1">/api/admin/ai-test</code> to
+            diagnose why the Anthropic/OpenAI provider fell back.
+          </span>
+        </div>
+      )}
       <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto p-4 text-sm">
         {messages.length === 0 && (
           <div className="text-ink-muted">

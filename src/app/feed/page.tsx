@@ -4,16 +4,69 @@ import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/session";
 import { getPersonalizedFeed } from "@/lib/feed";
 import { ArticleCard } from "@/components/article-card";
+import { RefreshFeedButton } from "@/components/refresh-feed-button";
+import { FeedFilters } from "@/components/feed-filters";
 import { safeParseJson } from "@/lib/utils";
+import {
+  CATEGORIES,
+  computeTrendingEntities,
+  countPerCategory,
+} from "@/lib/categories";
 
 export const dynamic = "force-dynamic";
 
-export default async function FeedPage() {
+export default async function FeedPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ category?: string }>;
+}) {
   const user = await getCurrentUser();
   if (!user) redirect("/signin");
   if (!user.preference?.onboardingCompleted) redirect("/onboarding");
 
-  const articles = await getPersonalizedFeed(user.id, { limit: 40 });
+  const { category } = await searchParams;
+  const activeCategory = category && CATEGORIES.some((c) => c.slug === category) ? category : "top";
+
+  const articles = await getPersonalizedFeed(user.id, {
+    limit: 40,
+    category: activeCategory,
+  });
+
+  // Pull a broader recent window just to compute category counts and
+  // trending entities (not for display). Kept cheap: 300 rows, headlines
+  // + summaries only.
+  const recentSince = new Date(Date.now() - 48 * 60 * 60 * 1000);
+  const recentForStats = await db.article.findMany({
+    where: { publishedAt: { gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) } },
+    select: {
+      headline: true,
+      summaryShort: true,
+      topicTagsJson: true,
+      publishedAt: true,
+    },
+    orderBy: { publishedAt: "desc" },
+    take: 300,
+  });
+  const normalized = recentForStats.map((a) => ({
+    headline: a.headline,
+    summaryShort: a.summaryShort,
+    topicTags: safeParseJson<string[]>(a.topicTagsJson, []),
+    publishedAt: a.publishedAt,
+  }));
+  const counts = countPerCategory(normalized, { since: recentSince });
+  const trending = computeTrendingEntities(normalized, { limit: 8, since: recentSince });
+
+  const categoryChips = CATEGORIES.map((c) => ({
+    slug: c.slug,
+    label: c.label,
+    count: counts[c.slug] || 0,
+  }));
+
+  const latestArticle = await db.article.findFirst({
+    orderBy: { rawIngestedAt: "desc" },
+    select: { rawIngestedAt: true },
+  });
+
   const bookmarks = await db.bookmark.findMany({
     where: { userId: user.id },
     select: { articleId: true },
@@ -21,31 +74,40 @@ export default async function FeedPage() {
   const bookmarkedIds = new Set(bookmarks.map((b) => b.articleId));
 
   const followedTopics = safeParseJson<string[]>(user.preference.followedTopics, []);
-  const clusters = await db.topicCluster.findMany({
-    take: 6,
-    include: { articles: { take: 1 } },
-  });
+
+  const activeCategoryLabel =
+    CATEGORIES.find((c) => c.slug === activeCategory)?.label ?? "Top stories";
 
   return (
     <div className="container grid gap-8 py-8 lg:grid-cols-[1fr_280px]">
       <div>
-        <div className="mb-6 flex items-end justify-between">
+        {/* Header with refresh button */}
+        <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
           <div>
             <div className="label">Your feed</div>
             <h1 className="mt-1 text-3xl font-semibold tracking-tight">
-              Top stories for {user.name || "you"}
+              {activeCategoryLabel}
             </h1>
             <p className="mt-1 text-sm text-ink-muted">
               Ranked by recency, your topic interests, and the sources you trust.
             </p>
           </div>
-          <Link href="/settings" className="btn-ghost text-sm">
-            Tune preferences
-          </Link>
+          <RefreshFeedButton
+            lastRefreshedAt={latestArticle?.rawIngestedAt?.toISOString() ?? null}
+          />
+        </div>
+
+        {/* Category + trending filter bar */}
+        <div className="mb-6">
+          <FeedFilters
+            categories={categoryChips}
+            activeCategory={activeCategory}
+            trending={trending}
+          />
         </div>
 
         {articles.length === 0 ? (
-          <EmptyFeed />
+          <EmptyFeed activeCategory={activeCategory} />
         ) : (
           <div className="grid gap-4">
             {articles.map((a) => (
@@ -81,46 +143,59 @@ export default async function FeedPage() {
               <div className="text-sm text-ink-muted">No topics yet.</div>
             )}
           </div>
+          <Link
+            href="/settings"
+            className="mt-3 inline-block text-xs text-brand hover:underline"
+          >
+            Edit preferences →
+          </Link>
         </div>
 
-        <div className="card p-4">
-          <div className="label">Topic clusters</div>
-          <div className="mt-2 space-y-2">
-            {clusters.map((c) => (
-              <Link
-                key={c.id}
-                href={c.articles[0] ? `/article/${c.articles[0].id}` : "/feed"}
-                className="block rounded-xl border border-line px-3 py-2 text-sm hover:bg-bg-elevated"
-              >
-                <div className="font-medium">{c.label}</div>
-                <div className="mt-0.5 line-clamp-2 text-xs text-ink-muted">
-                  {c.canonicalQuestion}
-                </div>
-              </Link>
-            ))}
+        {trending.length > 0 && (
+          <div className="card p-4">
+            <div className="label">Trending now</div>
+            <div className="mt-2 space-y-1.5 text-sm">
+              {trending.slice(0, 6).map((t) => (
+                <Link
+                  key={t.label}
+                  href={`/search?q=${encodeURIComponent(t.label)}`}
+                  className="flex items-center justify-between rounded-lg px-2 py-1 text-ink-muted hover:bg-bg-elevated hover:text-ink"
+                >
+                  <span>{t.label}</span>
+                  <span className="text-xs text-ink-faint">{t.count}</span>
+                </Link>
+              ))}
+            </div>
           </div>
-        </div>
+        )}
       </aside>
     </div>
   );
 }
 
-function EmptyFeed() {
+function EmptyFeed({ activeCategory }: { activeCategory: string }) {
   return (
     <div className="card p-8 text-center">
-      <h3 className="text-lg font-semibold">Your feed is empty.</h3>
+      <h3 className="text-lg font-semibold">
+        {activeCategory === "top"
+          ? "Your feed is empty."
+          : `No articles in this category right now.`}
+      </h3>
       <p className="mx-auto mt-1 max-w-md text-sm text-ink-muted">
-        No articles are loaded in this deployment yet. If you&rsquo;re the admin, populate
-        demo content by opening{" "}
-        <code className="rounded bg-bg-elevated px-1.5 py-0.5 text-xs">
-          /api/admin/seed?token=&lt;SEED_TOKEN&gt;
-        </code>{" "}
-        in your browser, or run{" "}
-        <code className="rounded bg-bg-elevated px-1.5 py-0.5 text-xs">npm run db:seed</code>{" "}
-        locally. You can also enable live RSS ingestion — see the README.
+        {activeCategory === "top" ? (
+          <>
+            No articles are loaded yet. Click <strong>Refresh feed</strong> above to pull
+            fresh articles from the RSS sources.
+          </>
+        ) : (
+          <>
+            Try a different category, or click <strong>Refresh feed</strong> to pull
+            new coverage.
+          </>
+        )}
       </p>
-      <Link href="/settings" className="btn-primary mt-4">
-        Update preferences
+      <Link href="/feed" className="btn-ghost mt-4">
+        Back to Top stories
       </Link>
     </div>
   );

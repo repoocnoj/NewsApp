@@ -4,7 +4,8 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { RefreshCw } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { refreshArticlesAction, saveSettingsAction } from "./actions";
+import { refreshArticlesAction } from "../actions";
+import { saveSettingsAction } from "./actions";
 
 export function SettingsForm({
   topics,
