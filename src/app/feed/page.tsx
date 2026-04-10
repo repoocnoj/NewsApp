@@ -110,8 +110,14 @@ function EmptyFeed() {
     <div className="card p-8 text-center">
       <h3 className="text-lg font-semibold">Your feed is empty.</h3>
       <p className="mx-auto mt-1 max-w-md text-sm text-ink-muted">
-        Run the seed script or enable live ingestion to populate NewsApp with articles. See the
-        README for instructions.
+        No articles are loaded in this deployment yet. If you&rsquo;re the admin, populate
+        demo content by opening{" "}
+        <code className="rounded bg-bg-elevated px-1.5 py-0.5 text-xs">
+          /api/admin/seed?token=&lt;SEED_TOKEN&gt;
+        </code>{" "}
+        in your browser, or run{" "}
+        <code className="rounded bg-bg-elevated px-1.5 py-0.5 text-xs">npm run db:seed</code>{" "}
+        locally. You can also enable live RSS ingestion — see the README.
       </p>
       <Link href="/settings" className="btn-primary mt-4">
         Update preferences

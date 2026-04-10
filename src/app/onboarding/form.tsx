@@ -55,10 +55,11 @@ export function OnboardingForm({
     { title: "Tune with examples", sub: "Like or dislike a few articles to refine your feed." },
   ];
 
+  // Step 0 (topics) is the only hard requirement — you can't personalize
+  // without telling us what you're interested in. Source preferences and
+  // like/dislike signals are both optional refinements.
   const canNext =
-    (step === 0 && selectedTopics.length >= 2) ||
-    (step === 1 && preferredSources.length > 0) ||
-    step === 2;
+    (step === 0 && selectedTopics.length >= 2) || step === 1 || step === 2;
 
   function submit() {
     start(async () => {
@@ -116,7 +117,19 @@ export function OnboardingForm({
           </div>
         )}
 
-        {step === 1 && (
+        {step === 1 && sources.length === 0 && (
+          <div className="rounded-xl border border-dashed border-line p-6 text-sm text-ink-muted">
+            <p className="text-ink">No sources have been loaded into this deployment yet.</p>
+            <p className="mt-2">
+              That&rsquo;s fine — you can skip this step and tune sources later from
+              <span className="text-ink"> Settings</span>. If you&rsquo;re the admin of this
+              deployment, populate demo content by calling{" "}
+              <code className="rounded bg-bg-elevated px-1">/api/admin/seed?token=…</code>.
+            </p>
+          </div>
+        )}
+
+        {step === 1 && sources.length > 0 && (
           <div className="grid gap-2 sm:grid-cols-2">
             {sources.map((s) => {
               const preferred = preferredSources.includes(s.id);
@@ -180,7 +193,17 @@ export function OnboardingForm({
           </div>
         )}
 
-        {step === 2 && (
+        {step === 2 && sampleArticles.length === 0 && (
+          <div className="rounded-xl border border-dashed border-line p-6 text-sm text-ink-muted">
+            <p className="text-ink">No sample articles yet.</p>
+            <p className="mt-2">
+              You can finish onboarding now — articles will appear in your feed once the
+              database is seeded or live ingestion runs.
+            </p>
+          </div>
+        )}
+
+        {step === 2 && sampleArticles.length > 0 && (
           <div className="space-y-3">
             {sampleArticles.map((a) => {
               const liked = likedArticles.includes(a.id);
