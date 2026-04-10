@@ -42,14 +42,25 @@ async function handle(req: Request) {
     );
   }
 
+  // By default the production seed only loads sources + topic clusters +
+  // timeline events, NOT the 15 hand-written demo articles. Real content
+  // should come from live RSS ingestion via /api/admin/ingest. Pass
+  // ?demo=1 if you explicitly want the demo articles (useful for screenshots).
+  const includeDemoArticles = url.searchParams.get("demo") === "1";
+
   try {
-    const result = await runSeed(db, { enrichWithAI: false });
+    const result = await runSeed(db, {
+      enrichWithAI: false,
+      skipDemoArticles: !includeDemoArticles,
+    });
     return NextResponse.json({
       ok: true,
       message:
         result.articlesAdded > 0
           ? `Seeded ${result.articlesAdded} new article(s). Total: ${result.articles} articles across ${result.clusters} clusters and ${result.sources} sources.`
-          : `Database already contains ${result.articles} article(s). No new rows added.`,
+          : includeDemoArticles
+            ? `Database already contains ${result.articles} article(s). No new rows added.`
+            : `Seeded ${result.sources} sources and ${result.clusters} topic clusters. Demo articles were skipped (add &demo=1 to include them). Call /api/admin/ingest to pull real articles from live RSS.`,
       stats: result,
     });
   } catch (err) {

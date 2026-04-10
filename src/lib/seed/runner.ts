@@ -12,14 +12,20 @@ import {
  *   - the protected API route (`/api/admin/seed`) for prod bootstrap
  *
  * Safe to re-run: every insert either upserts or checks existence first.
- * `enrichWithAI=false` uses trivial fallback summaries (first 200 chars of
- * the article text). This avoids serverless function timeouts when an
- * external AI provider is configured, while still producing a coherent
- * experience on first load.
+ *
+ * `skipDemoArticles` (default false): when true, the 15 hand-written
+ * example articles are skipped. Sources, topic clusters, timeline events,
+ * and article relationships are still created/maintained. The API route
+ * sets this to true so a prod seed doesn't pollute the feed with fake
+ * articles — prod should populate from live RSS ingestion instead.
+ *
+ * `enrichWithAI=false` uses trivial fallback summaries (first 200 chars
+ * of the article text) so seeding stays fast even with a real AI
+ * provider configured.
  */
 export async function runSeed(
   db: PrismaClient,
-  opts: { enrichWithAI?: boolean } = {},
+  opts: { enrichWithAI?: boolean; skipDemoArticles?: boolean } = {},
 ): Promise<{
   sources: number;
   clusters: number;
@@ -28,7 +34,7 @@ export async function runSeed(
   relationships: number;
   timelineEvents: number;
 }> {
-  const { enrichWithAI = false } = opts;
+  const { enrichWithAI = false, skipDemoArticles = false } = opts;
 
   let srcCount = 0;
   for (const s of SOURCES) {
@@ -78,58 +84,60 @@ export async function runSeed(
 
   let articleCount = 0;
   let articlesAdded = 0;
-  for (const a of ARTICLES) {
-    const source = await db.source.findUnique({ where: { slug: a.sourceSlug } });
-    const cluster = await db.topicCluster.findUnique({ where: { slug: a.clusterSlug } });
-    if (!source || !cluster) continue;
+  if (!skipDemoArticles) {
+    for (const a of ARTICLES) {
+      const source = await db.source.findUnique({ where: { slug: a.sourceSlug } });
+      const cluster = await db.topicCluster.findUnique({ where: { slug: a.clusterSlug } });
+      if (!source || !cluster) continue;
 
-    const existing = await db.article.findUnique({ where: { url: a.url } });
-    if (existing) {
-      articleCount++;
-      continue;
-    }
+      const existing = await db.article.findUnique({ where: { url: a.url } });
+      if (existing) {
+        articleCount++;
+        continue;
+      }
 
-    let summaryShort = a.articleText.slice(0, 220).trim();
-    let summaryLong = a.articleText.slice(0, 900).trim();
-    let keyPoints: string[] = [];
-    let entities: string[] = [];
-    let topicTags: string[] = inferTopicTags(a.headline + " " + a.articleText);
+      let summaryShort = a.articleText.slice(0, 220).trim();
+      let summaryLong = a.articleText.slice(0, 900).trim();
+      let keyPoints: string[] = [];
+      let entities: string[] = [];
+      let topicTags: string[] = inferTopicTags(a.headline + " " + a.articleText);
 
-    if (enrichWithAI) {
-      // Dynamic import keeps the AI module out of the edge/serverless
-      // cold-start path when we're using the fallback seed.
-      const { ai } = await import("../ai");
-      const summary = await ai.summarizeArticle({
-        headline: a.headline,
-        text: a.articleText,
+      if (enrichWithAI) {
+        // Dynamic import keeps the AI module out of the edge/serverless
+        // cold-start path when we're using the fallback seed.
+        const { ai } = await import("../ai");
+        const summary = await ai.summarizeArticle({
+          headline: a.headline,
+          text: a.articleText,
+        });
+        summaryShort = summary.short || summaryShort;
+        summaryLong = summary.long || summaryLong;
+        keyPoints = summary.keyPoints || [];
+        entities = summary.entities || [];
+        topicTags = summary.topicTags || topicTags;
+      }
+
+      await db.article.create({
+        data: {
+          sourceId: source.id,
+          topicClusterId: cluster.id,
+          url: a.url,
+          headline: a.headline,
+          author: a.author,
+          publishedAt: new Date(a.publishedAt),
+          articleText: a.articleText,
+          previewText: a.articleText.slice(0, 400),
+          imageUrl: a.imageUrl,
+          summaryShort,
+          summaryLong,
+          keyPointsJson: JSON.stringify(keyPoints),
+          entitiesJson: JSON.stringify(entities),
+          topicTagsJson: JSON.stringify(topicTags),
+        },
       });
-      summaryShort = summary.short || summaryShort;
-      summaryLong = summary.long || summaryLong;
-      keyPoints = summary.keyPoints || [];
-      entities = summary.entities || [];
-      topicTags = summary.topicTags || topicTags;
+      articleCount++;
+      articlesAdded++;
     }
-
-    await db.article.create({
-      data: {
-        sourceId: source.id,
-        topicClusterId: cluster.id,
-        url: a.url,
-        headline: a.headline,
-        author: a.author,
-        publishedAt: new Date(a.publishedAt),
-        articleText: a.articleText,
-        previewText: a.articleText.slice(0, 400),
-        imageUrl: a.imageUrl,
-        summaryShort,
-        summaryLong,
-        keyPointsJson: JSON.stringify(keyPoints),
-        entitiesJson: JSON.stringify(entities),
-        topicTagsJson: JSON.stringify(topicTags),
-      },
-    });
-    articleCount++;
-    articlesAdded++;
   }
 
   // Relationships between articles in the same cluster
