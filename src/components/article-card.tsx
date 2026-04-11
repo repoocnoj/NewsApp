@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Bookmark, ExternalLink } from "lucide-react";
 import { formatRelative } from "@/lib/utils";
 import { BookmarkButton } from "@/components/bookmark-button";
+import { SafeImage } from "@/components/safe-image";
 
 type ArticleCardProps = {
   article: {
@@ -28,16 +29,9 @@ export function ArticleCard({ article, bookmarked, showBookmark = true }: Articl
             href={`/article/${article.id}`}
             className="relative block h-32 w-32 shrink-0 overflow-hidden bg-bg-elevated sm:h-auto sm:w-44"
           >
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
+            <SafeImage
               src={article.imageUrl!}
-              alt=""
-              loading="lazy"
               className="h-full w-full object-cover transition-transform duration-300 hover:scale-105"
-              onError={(e) => {
-                // Hide broken images gracefully — the card still renders fine
-                (e.currentTarget as HTMLImageElement).style.display = "none";
-              }}
             />
           </Link>
         )}
