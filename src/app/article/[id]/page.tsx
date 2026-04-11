@@ -58,43 +58,71 @@ export default async function ArticlePage({
   // Dynamically find related coverage across other sources by tokenizing
   // headlines/summaries. This works for any ingested article, not just
   // the seeded topic clusters.
-  const relatedSet = await findRelatedArticles(article, { limit: 6 });
-  const related = relatedSet.related.map((r) => r.article);
-  const contrarianArticles = relatedSet.contrarian.map((r) => r.article);
+  let related: Array<typeof article> = [];
+  let contrarianArticles: Array<typeof article> = [];
+  let comparative = {
+    commonFacts: [] as string[],
+    disagreements: [] as Array<{ claim: string; sides: string[] }>,
+    framingDifferences: [] as string[],
+    missingContext: [] as string[],
+  };
+  let contrarian = {
+    summary: "",
+    whyItDiffers: "",
+    supportingUrls: [] as Array<{ url: string; label: string }>,
+  };
+  let suggestions: { questions: string[] } = { questions: [] };
+  try {
+    const relatedSet = await findRelatedArticles(article, { limit: 6 });
+    related = relatedSet.related.map((r) => r.article);
+    contrarianArticles = relatedSet.contrarian.map((r) => r.article);
 
-  // AI synthesis over the dynamically-computed related set, cached on the
-  // article row for 6 hours.
-  const { synthesis: comparative, contrarian, suggestions } = await enrichArticleAnalysis(
-    article,
-    relatedSet,
-  );
+    // AI synthesis over the dynamically-computed related set, cached on
+    // the article row for 6 hours.
+    const bundle = await enrichArticleAnalysis(article, relatedSet);
+    comparative = bundle.synthesis;
+    contrarian = bundle.contrarian;
+    suggestions = bundle.suggestions;
+  } catch (err) {
+    console.warn("[article] related/synthesis failed:", (err as Error).message);
+  }
 
   // Timeline: use seeded events if this article belongs to a seeded
   // cluster; otherwise ask the AI to synthesize one from the related set.
+  // Every path is wrapped so a timeline failure never takes down the page.
   const topicLabel = topicCluster?.label ?? article.headline;
-  const timeline =
-    topicCluster && topicCluster.timelineEvents.length > 0
-      ? topicCluster.timelineEvents.map((e) => ({
-          date: e.eventDate.toISOString(),
-          title: e.title,
-          description: e.description,
-          sources: safeParseJson<Array<{ url: string; label: string }>>(
-            e.sourceRefsJson,
-            [],
-          ),
-        }))
-      : related.length > 0
-        ? await ai.timeline({
-            topic: topicLabel,
-            articles: [article, ...related].map((a) => ({
-              source: a.source.name,
-              url: a.url,
-              headline: a.headline,
-              publishedAt: a.publishedAt.toISOString(),
-              summary: a.summaryShort,
-            })),
-          })
-        : [];
+  let timeline: Array<{
+    date: string;
+    title: string;
+    description: string;
+    sources: Array<{ url: string; label: string }>;
+  }> = [];
+  try {
+    if (topicCluster && topicCluster.timelineEvents.length > 0) {
+      timeline = topicCluster.timelineEvents.map((e) => ({
+        date: e.eventDate.toISOString(),
+        title: e.title,
+        description: e.description,
+        sources: safeParseJson<Array<{ url: string; label: string }>>(
+          e.sourceRefsJson,
+          [],
+        ),
+      }));
+    } else if (related.length > 0) {
+      timeline = await ai.timeline({
+        topic: topicLabel,
+        articles: [article, ...related].map((a) => ({
+          source: a.source.name,
+          url: a.url,
+          headline: a.headline,
+          publishedAt: a.publishedAt.toISOString(),
+          summary: a.summaryShort,
+        })),
+      });
+    }
+  } catch (err) {
+    console.warn("[article] timeline failed:", (err as Error).message);
+  }
 
   const keyPoints = safeParseJson<string[]>(article.keyPointsJson, []);
   const topicTags = safeParseJson<string[]>(article.topicTagsJson, []);
