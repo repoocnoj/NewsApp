@@ -148,6 +148,19 @@ export default async function ArticlePage({
           </div>
         </header>
 
+        {/* Hero image */}
+        {article.imageUrl && (
+          <div className="overflow-hidden rounded-2xl border border-line bg-bg-subtle">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={article.imageUrl}
+              alt=""
+              className="max-h-[420px] w-full object-cover"
+              loading="eager"
+            />
+          </div>
+        )}
+
         {/* AI provider disclosure */}
         {!hasRealAI && (
           <div className="rounded-xl border border-dashed border-line bg-bg-subtle p-3 text-xs text-ink-muted">

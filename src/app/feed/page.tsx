@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { Suspense } from "react";
 import Link from "next/link";
+import { LayoutGrid } from "lucide-react";
 import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/session";
 import { getPersonalizedFeed } from "@/lib/feed";
@@ -105,9 +106,18 @@ export default async function FeedPage({
               Ranked by recency, your topic interests, and the sources you trust.
             </p>
           </div>
-          <RefreshFeedButton
-            lastRefreshedAt={latestArticle?.rawIngestedAt?.toISOString() ?? null}
-          />
+          <div className="flex items-center gap-2">
+            <Link
+              href={`/swipe${activeCategory !== "top" ? `?category=${activeCategory}` : ""}`}
+              className="btn-ghost text-sm"
+              title="Switch to Instagram-style swipe view"
+            >
+              <LayoutGrid className="h-4 w-4" /> Swipe view
+            </Link>
+            <RefreshFeedButton
+              lastRefreshedAt={latestArticle?.rawIngestedAt?.toISOString() ?? null}
+            />
+          </div>
         </div>
 
         {/* Category + trending filter bar. Wrapped in Suspense because
@@ -138,6 +148,7 @@ export default async function FeedPage({
                   url: a.url,
                   publishedAt: a.publishedAt,
                   topicTags: safeParseJson<string[]>(a.topicTagsJson, []),
+                  imageUrl: a.imageUrl,
                   source: { name: a.source.name, trustTier: a.source.trustTier },
                 }}
               />

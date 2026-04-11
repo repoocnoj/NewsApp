@@ -48,6 +48,7 @@ export default async function BookmarksPage() {
                 url: b.article.url,
                 publishedAt: b.article.publishedAt,
                 topicTags: safeParseJson<string[]>(b.article.topicTagsJson, []),
+                imageUrl: b.article.imageUrl,
                 source: {
                   name: b.article.source.name,
                   trustTier: b.article.source.trustTier,

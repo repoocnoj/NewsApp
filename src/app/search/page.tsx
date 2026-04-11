@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
+import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/session";
 import { ArticleCard } from "@/components/article-card";
@@ -18,10 +19,7 @@ export default async function SearchPage({
   const { q } = await searchParams;
   const query = (q ?? "").trim();
 
-  let articles: Awaited<ReturnType<typeof searchArticles>> = [];
-  if (query) {
-    articles = await searchArticles(query);
-  }
+  const articles = query ? await searchArticles(query) : [];
 
   const bookmarks = await db.bookmark.findMany({
     where: { userId: user.id },
@@ -66,6 +64,7 @@ export default async function SearchPage({
               url: a.url,
               publishedAt: a.publishedAt,
               topicTags: safeParseJson<string[]>(a.topicTagsJson, []),
+              imageUrl: a.imageUrl,
               source: { name: a.source.name, trustTier: a.source.trustTier },
             }}
           />
@@ -89,41 +88,27 @@ function TryLink({ q }: { q: string }) {
 }
 
 async function searchArticles(query: string) {
-  // SQLite doesn't support case-insensitive LIKE mode flags via Prisma's
-  // `mode: "insensitive"`. We normalize to lowercase LIKE instead.
+  // Two-step search: raw SQL for case-insensitive matching (portable
+  // between sqlite and postgres by using LOWER() on both sides), then
+  // a typed `findMany` to return fully-typed rows with the source
+  // relation. Quoted identifiers (`"Article"`, `"summaryShort"`)
+  // work on both providers: postgres respects the quotes, sqlite
+  // ignores them.
   const like = `%${query.toLowerCase()}%`;
-  // Raw query for case-insensitive search across headline + summary + tags
-  const rows = await db.$queryRawUnsafe<
-    Array<{
-      id: string;
-      headline: string;
-      summaryShort: string;
-      url: string;
-      publishedAt: Date;
-      topicTagsJson: string;
-      sourceId: string;
-    }>
-  >(
-    `SELECT id, headline, summaryShort, url, publishedAt, topicTagsJson, sourceId
-     FROM Article
-     WHERE lower(headline) LIKE ? OR lower(summaryShort) LIKE ? OR lower(summaryLong) LIKE ? OR lower(topicTagsJson) LIKE ?
-     ORDER BY publishedAt DESC
-     LIMIT 40`,
-    like,
-    like,
-    like,
-    like,
-  );
-  if (rows.length === 0) return [];
-  const sources = await db.source.findMany({ where: { id: { in: rows.map((r) => r.sourceId) } } });
-  const byId = new Map(sources.map((s) => [s.id, s]));
-  return rows.map((r) => ({
-    id: r.id,
-    headline: r.headline,
-    summaryShort: r.summaryShort,
-    url: r.url,
-    publishedAt: new Date(r.publishedAt),
-    topicTagsJson: r.topicTagsJson,
-    source: byId.get(r.sourceId)!,
-  }));
+  const idRows = await db.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+    SELECT id FROM "Article"
+    WHERE LOWER(headline) LIKE ${like}
+       OR LOWER("summaryShort") LIKE ${like}
+       OR LOWER("summaryLong") LIKE ${like}
+       OR LOWER("topicTagsJson") LIKE ${like}
+    ORDER BY "publishedAt" DESC
+    LIMIT 40
+  `);
+  if (idRows.length === 0) return [];
+  const rows = await db.article.findMany({
+    where: { id: { in: idRows.map((r) => r.id) } },
+    include: { source: true },
+    orderBy: { publishedAt: "desc" },
+  });
+  return rows;
 }
