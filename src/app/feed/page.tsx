@@ -5,10 +5,11 @@ import { LayoutGrid } from "lucide-react";
 import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/session";
 import { getPersonalizedFeed } from "@/lib/feed";
-import { ArticleCard } from "@/components/article-card";
+import { StoryCard } from "@/components/story-card";
 import { RefreshFeedButton } from "@/components/refresh-feed-button";
 import { FeedFilters } from "@/components/feed-filters";
 import { safeParseJson } from "@/lib/utils";
+import { groupByStory } from "@/lib/story-groups";
 import {
   CATEGORIES,
   computeTrendingEntities,
@@ -136,24 +137,7 @@ export default async function FeedPage({
         {articles.length === 0 ? (
           <EmptyFeed activeCategory={activeCategory} />
         ) : (
-          <div className="grid gap-4">
-            {articles.map((a) => (
-              <ArticleCard
-                key={a.id}
-                bookmarked={bookmarkedIds.has(a.id)}
-                article={{
-                  id: a.id,
-                  headline: a.headline,
-                  summaryShort: a.summaryShort,
-                  url: a.url,
-                  publishedAt: a.publishedAt,
-                  topicTags: safeParseJson<string[]>(a.topicTagsJson, []),
-                  imageUrl: a.imageUrl,
-                  source: { name: a.source.name, trustTier: a.source.trustTier },
-                }}
-              />
-            ))}
-          </div>
+          <StoryFeed articles={articles} bookmarkedIds={bookmarkedIds} />
         )}
       </div>
 
@@ -197,6 +181,27 @@ export default async function FeedPage({
           </div>
         )}
       </aside>
+    </div>
+  );
+}
+
+function StoryFeed({
+  articles,
+  bookmarkedIds,
+}: {
+  articles: Awaited<ReturnType<typeof getPersonalizedFeed>>;
+  bookmarkedIds: Set<string>;
+}) {
+  const groups = groupByStory(articles as any);
+  return (
+    <div className="grid gap-4">
+      {groups.map((g) => (
+        <StoryCard
+          key={g.primary.id}
+          group={g}
+          bookmarked={bookmarkedIds.has(g.primary.id)}
+        />
+      ))}
     </div>
   );
 }

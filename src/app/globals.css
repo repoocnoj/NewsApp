@@ -3,58 +3,126 @@
 @tailwind utilities;
 
 @layer base {
-  :root {
+  /* ──────── Dark mode (default) ──────── */
+  :root,
+  html.dark {
     color-scheme: dark;
+    --color-bg: #0b0d10;
+    --color-bg-subtle: #11141a;
+    --color-bg-elevated: #151923;
+    --color-ink: #e7ecf3;
+    --color-ink-muted: #9aa4b2;
+    --color-ink-faint: #6b7280;
+    --color-line: #1f2430;
+    --color-line-strong: #2a3040;
+    --color-brand: #7cc4ff;
+    --color-brand-strong: #4aa3ff;
+    --color-shadow-soft: 0 1px 2px rgba(0,0,0,0.3), 0 4px 20px rgba(0,0,0,0.25);
+    --selection-bg: rgba(124, 196, 255, 0.25);
   }
+
+  /* ──────── Light mode ──────── */
+  html.light {
+    color-scheme: light;
+    --color-bg: #f8f9fb;
+    --color-bg-subtle: #ffffff;
+    --color-bg-elevated: #f0f2f5;
+    --color-ink: #1a1d23;
+    --color-ink-muted: #525964;
+    --color-ink-faint: #8490a0;
+    --color-line: #e0e3e8;
+    --color-line-strong: #cdd1d8;
+    --color-brand: #2563eb;
+    --color-brand-strong: #1d4ed8;
+    --color-shadow-soft: 0 1px 3px rgba(0,0,0,0.08), 0 4px 20px rgba(0,0,0,0.06);
+    --selection-bg: rgba(37, 99, 235, 0.15);
+  }
+
   html,
   body {
-    background: #0b0d10;
-    color: #e7ecf3;
+    background: var(--color-bg);
+    color: var(--color-ink);
     -webkit-font-smoothing: antialiased;
   }
   ::selection {
-    background: rgba(124, 196, 255, 0.25);
+    background: var(--selection-bg);
   }
 }
 
 @layer components {
   .card {
-    @apply bg-bg-subtle border border-line rounded-2xl shadow-soft;
+    background: var(--color-bg-subtle);
+    border: 1px solid var(--color-line);
+    border-radius: 1.125rem;
+    box-shadow: var(--color-shadow-soft);
   }
   .card-hover {
-    @apply transition-colors hover:border-line-strong hover:bg-bg-elevated;
+    @apply transition-colors;
+  }
+  .card-hover:hover {
+    border-color: var(--color-line-strong);
+    background: var(--color-bg-elevated);
   }
   .chip {
-    @apply inline-flex items-center gap-1 rounded-full border border-line px-2.5 py-0.5 text-xs text-ink-muted;
+    @apply inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs;
+    border: 1px solid var(--color-line);
+    color: var(--color-ink-muted);
   }
   .chip-brand {
-    @apply inline-flex items-center gap-1 rounded-full border border-brand/30 bg-brand/10 px-2.5 py-0.5 text-xs text-brand;
+    @apply inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs;
+    border: 1px solid color-mix(in srgb, var(--color-brand) 30%, transparent);
+    background: color-mix(in srgb, var(--color-brand) 10%, transparent);
+    color: var(--color-brand);
   }
   .btn {
     @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed;
   }
   .btn-primary {
-    @apply btn bg-brand text-[#0a1220] hover:bg-brand-strong;
+    @apply btn;
+    background: var(--color-brand);
+    color: var(--color-bg);
+  }
+  .btn-primary:hover {
+    background: var(--color-brand-strong);
   }
   .btn-ghost {
-    @apply btn border border-line text-ink hover:bg-bg-elevated;
+    @apply btn;
+    border: 1px solid var(--color-line);
+    color: var(--color-ink);
+  }
+  .btn-ghost:hover {
+    background: var(--color-bg-elevated);
   }
   .btn-subtle {
-    @apply btn bg-bg-elevated text-ink hover:bg-line;
+    @apply btn;
+    background: var(--color-bg-elevated);
+    color: var(--color-ink);
+  }
+  .btn-subtle:hover {
+    background: var(--color-line);
   }
   .input {
-    @apply w-full rounded-xl border border-line bg-bg-subtle px-3 py-2 text-sm text-ink placeholder:text-ink-faint focus:outline-none focus:ring-2 focus:ring-brand/40;
+    @apply w-full rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2;
+    border: 1px solid var(--color-line);
+    background: var(--color-bg-subtle);
+    color: var(--color-ink);
+    --tw-ring-color: color-mix(in srgb, var(--color-brand) 40%, transparent);
+  }
+  .input::placeholder {
+    color: var(--color-ink-faint);
   }
   .label {
-    @apply text-xs font-medium uppercase tracking-wide text-ink-faint;
+    @apply text-xs font-medium uppercase tracking-wide;
+    color: var(--color-ink-faint);
   }
   .prose-news {
-    @apply text-ink leading-relaxed;
+    color: var(--color-ink);
+    @apply leading-relaxed;
   }
   .prose-news p {
     @apply mb-4;
   }
   .divider {
-    @apply border-line;
+    border-color: var(--color-line);
   }
 }

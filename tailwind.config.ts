@@ -14,22 +14,22 @@ const config: Config = {
     extend: {
       colors: {
         bg: {
-          DEFAULT: "#0b0d10",
-          subtle: "#11141a",
-          elevated: "#151923",
+          DEFAULT: "var(--color-bg)",
+          subtle: "var(--color-bg-subtle)",
+          elevated: "var(--color-bg-elevated)",
         },
         ink: {
-          DEFAULT: "#e7ecf3",
-          muted: "#9aa4b2",
-          faint: "#6b7280",
+          DEFAULT: "var(--color-ink)",
+          muted: "var(--color-ink-muted)",
+          faint: "var(--color-ink-faint)",
         },
         line: {
-          DEFAULT: "#1f2430",
-          strong: "#2a3040",
+          DEFAULT: "var(--color-line)",
+          strong: "var(--color-line-strong)",
         },
         brand: {
-          DEFAULT: "#7cc4ff",
-          strong: "#4aa3ff",
+          DEFAULT: "var(--color-brand)",
+          strong: "var(--color-brand-strong)",
           muted: "#2a3f5a",
         },
         accent: {
@@ -48,7 +48,7 @@ const config: Config = {
         "2xl": "1.125rem",
       },
       boxShadow: {
-        soft: "0 1px 2px rgba(0,0,0,0.3), 0 4px 20px rgba(0,0,0,0.25)",
+        soft: "var(--color-shadow-soft)",
       },
     },
   },
