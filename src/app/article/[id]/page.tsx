@@ -9,7 +9,7 @@ import { formatRelative, formatDate, safeParseJson } from "@/lib/utils";
 import { BookmarkButton } from "@/components/bookmark-button";
 import { ChatPanel } from "@/components/chat-panel";
 import { SuggestedQuestions } from "@/components/suggested-questions";
-import { SafeImage } from "@/components/safe-image";
+import { ArticleReader } from "@/components/article-reader";
 import {
   enrichArticleAnalysis,
   enrichArticleSummary,
@@ -126,53 +126,40 @@ export default async function ArticlePage({
         {/* Hero image */}
         {articleRaw.imageUrl && (
           <div className="overflow-hidden rounded-2xl border border-line bg-bg-subtle">
-            <SafeImage
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
               src={articleRaw.imageUrl}
+              alt=""
               className="max-h-[420px] w-full object-cover"
               loading="eager"
             />
           </div>
         )}
 
-        {/* Article preview text (always available from the row) */}
-        <Section title="Article preview" subtitle="Excerpt from the reporting. Link above opens the full source.">
-          <div className="card p-5 prose-news max-w-none">
-            <p className="text-sm text-ink-faint">
-              {articleRaw.author ? `By ${articleRaw.author} · ` : ""}
-              {articleRaw.source.name}
-            </p>
-            <div className="mt-3 max-h-80 overflow-hidden">
-              <p>{articleRaw.articleText || articleRaw.previewText || articleRaw.summaryLong}</p>
-            </div>
-            <div className="mt-3">
-              <a
-                href={articleRaw.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-sm text-brand hover:underline"
-              >
-                Continue reading at {articleRaw.source.name} →
-              </a>
-            </div>
-          </div>
-        </Section>
-
-        {!hasRealAI && (
-          <div className="rounded-xl border border-dashed border-line bg-bg-subtle p-3 text-xs text-ink-muted">
-            <span className="font-medium text-ink">Mock AI mode.</span> Set{" "}
-            <code className="rounded bg-bg-elevated px-1">AI_PROVIDER=anthropic</code> and{" "}
-            <code className="rounded bg-bg-elevated px-1">ANTHROPIC_API_KEY=…</code> in env vars for real AI.
-          </div>
-        )}
-
-        {/* ──────── Phase 2: streamed via Suspense ──────── */}
-        <Suspense fallback={<LoadingAnalysis />}>
-          <AIAnalysisAsync
-            articleRaw={articleRaw}
-            topicCluster={topicCluster}
-            hasCachedSummary={hasCachedSummary}
-          />
-        </Suspense>
+        {/* Tabbed content: Analysis | Read | Source */}
+        <ArticleReader
+          articleUrl={articleRaw.url}
+          articleText={articleRaw.articleText || articleRaw.previewText || articleRaw.summaryLong || ""}
+          sourceName={articleRaw.source.name}
+          analysisContent={
+            <>
+              {!hasRealAI && (
+                <div className="mb-6 rounded-xl border border-dashed border-line bg-bg-subtle p-3 text-xs text-ink-muted">
+                  <span className="font-medium text-ink">Mock AI mode.</span> Set{" "}
+                  <code className="rounded bg-bg-elevated px-1">AI_PROVIDER=anthropic</code> and{" "}
+                  <code className="rounded bg-bg-elevated px-1">ANTHROPIC_API_KEY=…</code> in env vars for real AI.
+                </div>
+              )}
+              <Suspense fallback={<LoadingAnalysis />}>
+                <AIAnalysisAsync
+                  articleRaw={articleRaw}
+                  topicCluster={topicCluster}
+                  hasCachedSummary={hasCachedSummary}
+                />
+              </Suspense>
+            </>
+          }
+        />
       </article>
 
       <aside className="space-y-6 lg:sticky lg:top-16 lg:h-fit lg:self-start">
