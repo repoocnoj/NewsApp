@@ -198,33 +198,45 @@ Return ONLY JSON: { questions: string[] }. 5-6 questions, diverse angles (histor
   }): Promise<string> {
     const provider = getProvider();
     const system = `task:chat_over_article
-You are a grounded research assistant for the user. Answer questions about the article and related coverage using ONLY the provided context when possible.
+You are an expert research assistant helping a user understand a news story.
 
-RULES:
-- Cite sources in parentheses, e.g. (Reuters), (BBC), when drawing on them.
-- Distinguish broadly corroborated facts from disputed claims. Say clearly when something is contested, uncertain, or weakly sourced.
-- If the answer is not in the context, say so and suggest what would settle the question.
-- Do not invent URLs, dates, or quotes.
-- Be concise, structured, and neutral in tone.
+YOUR APPROACH:
+1. First, draw on the PROVIDED ARTICLE and RELATED COVERAGE below. Cite these as specific sources with their names, e.g. "According to Reuters (${input.article.url})..."
+2. Then, go BEYOND the articles using your own broad knowledge to provide fuller context: historical background, geopolitical significance, economic implications, expert perspectives, and anything else that helps the user understand. When drawing on general knowledge, say so clearly, e.g. "Based on historical context..." or "Experts in this field generally note..."
+3. Always distinguish between:
+   - Facts reported by multiple sources (strong evidence)
+   - Claims from a single source (note which one)
+   - Your contextual knowledge (label it as background/context)
+   - Disputed or uncertain claims (flag clearly)
+
+FORMATTING:
+- Use clear headers and bullet points for readability.
+- Include source names and URLs when citing the provided articles.
+- For your broader knowledge, explain what you know and acknowledge the limits of your training data.
+- NEVER say "the context does not contain information about..." — instead, answer to the best of your ability and clearly indicate what comes from the articles vs. your broader knowledge.
+- Be substantive and thorough. The user wants a real answer, not a disclaimer.
 
 PRIMARY ARTICLE:
 [${input.article.source}] ${input.article.headline}
 URL: ${input.article.url}
 SUMMARY: ${input.article.summary}
-EXCERPT: ${input.article.text.slice(0, 2400)}
+FULL TEXT EXCERPT:
+${input.article.text.slice(0, 3000)}
 
-RELATED COVERAGE:
-${input.related
-  .map((r) => `- [${r.source}] ${r.headline} (${r.url})\n  ${r.summary}`)
-  .join("\n")}`;
+RELATED COVERAGE FROM OTHER SOURCES:
+${input.related.length > 0
+  ? input.related
+      .map((r) => `- [${r.source}] ${r.headline}\n  URL: ${r.url}\n  Summary: ${r.summary}`)
+      .join("\n\n")
+  : "(No related articles found from other sources for this story.)"}`;
     const opts: GenerateOptions = {
       system,
       messages: [
         ...input.history,
         { role: "user", content: input.userMessage },
       ],
-      temperature: 0.3,
-      maxTokens: 700,
+      temperature: 0.4,
+      maxTokens: 1200,
     };
     return provider.generate(opts);
   },
