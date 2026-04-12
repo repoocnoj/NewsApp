@@ -7,23 +7,16 @@ import type { RawArticle } from "./types";
  * Process a raw article into the database: creates the Article row if new,
  * optionally enriches it with AI summary/topic tags/entities.
  *
- * Idempotent on URL.
- *
- * When `enrichWithAI` is false (the default for on-demand ingestion), the
- * article is stored with a trivial text-slice summary. This keeps ingestion
- * fast enough to run inside a serverless function's time budget even when
- * `AI_PROVIDER` points at a paid provider. The article detail page still
- * calls the AI provider at request time for comparative synthesis, contrarian
- * view, and chat, so the user-facing AI experience isn't diminished.
+ * Idempotent on URL. Returns the article + whether it was newly created.
  */
 export async function upsertRawArticle(
   sourceId: string,
   raw: RawArticle,
   clusterId?: string,
   opts: { enrichWithAI?: boolean } = {},
-) {
+): Promise<{ article: any; isNew: boolean }> {
   const existing = await db.article.findUnique({ where: { url: raw.url } });
-  if (existing) return existing;
+  if (existing) return { article: existing, isNew: false };
 
   let summaryShort = (raw.previewText ?? raw.articleText ?? raw.headline).slice(0, 220).trim();
   let summaryLong = (raw.articleText ?? raw.headline).slice(0, 900).trim();
@@ -43,7 +36,7 @@ export async function upsertRawArticle(
     topicTags = summary.topicTags ?? [];
   }
 
-  return db.article.create({
+  const article = await db.article.create({
     data: {
       sourceId,
       url: raw.url,
@@ -61,6 +54,7 @@ export async function upsertRawArticle(
       topicTagsJson: JSON.stringify(topicTags),
     },
   });
+  return { article, isNew: true };
 }
 
 /**
@@ -80,7 +74,8 @@ export async function runLiveIngestion(
   const sources = await db.source.findMany({
     where: { isActive: true, ingestStrategy: "rss" },
   });
-  let fetched = 0;
+  let newArticles = 0;
+  let existingArticles = 0;
   let failed = 0;
   let skippedSources = 0;
   const errors: Array<{ source: string; error: string }> = [];
@@ -95,8 +90,9 @@ export async function runLiveIngestion(
       const items = await adapter.fetch();
       for (const raw of items.slice(0, limit)) {
         try {
-          await upsertRawArticle(src.id, raw, undefined, { enrichWithAI });
-          fetched++;
+          const result = await upsertRawArticle(src.id, raw, undefined, { enrichWithAI });
+          if (result.isNew) newArticles++;
+          else existingArticles++;
         } catch (err) {
           failed++;
           errors.push({ source: src.slug, error: (err as Error).message });
@@ -107,5 +103,14 @@ export async function runLiveIngestion(
       errors.push({ source: src.slug, error: (err as Error).message });
     }
   }
-  return { fetched, failed, skippedSources, errors, note: "" };
+  return {
+    fetched: newArticles,
+    existing: existingArticles,
+    failed,
+    skippedSources,
+    errors,
+    note: newArticles === 0 && existingArticles > 0
+      ? "No new articles — all RSS items are already in your feed. Sources update every few hours."
+      : "",
+  };
 }

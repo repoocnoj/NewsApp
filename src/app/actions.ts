@@ -14,21 +14,26 @@ import { runLiveIngestion } from "@/lib/ingest/runner";
  */
 export async function refreshArticlesAction(): Promise<{
   fetched: number;
+  existing: number;
   failed: number;
   skippedSources: number;
+  note: string;
 }> {
   await requireUser();
   const result = await runLiveIngestion({
     force: true,
-    limit: 8,
+    limit: 20,
     enrichWithAI: false,
   });
   revalidatePath("/feed");
+  revalidatePath("/swipe");
   revalidatePath("/settings");
   return {
     fetched: result.fetched,
+    existing: result.existing ?? 0,
     failed: result.failed,
     skippedSources: result.skippedSources ?? 0,
+    note: result.note ?? "",
   };
 }
 

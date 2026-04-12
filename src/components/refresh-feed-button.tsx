@@ -24,6 +24,7 @@ export function RefreshFeedButton({
   const [result, setResult] = useState<
     | { kind: "idle" }
     | { kind: "success"; fetched: number }
+    | { kind: "uptodate" }
     | { kind: "empty" }
     | { kind: "error"; message: string }
   >({ kind: "idle" });
@@ -31,7 +32,8 @@ export function RefreshFeedButton({
   // Clear the result banner after a few seconds.
   useEffect(() => {
     if (result.kind === "idle") return;
-    const t = setTimeout(() => setResult({ kind: "idle" }), 6000);
+    const delay = result.kind === "uptodate" ? 8000 : 6000;
+    const t = setTimeout(() => setResult({ kind: "idle" }), delay);
     return () => clearTimeout(t);
   }, [result.kind]);
 
@@ -42,6 +44,10 @@ export function RefreshFeedButton({
         const res = await refreshArticlesAction();
         if (res.fetched > 0) {
           setResult({ kind: "success", fetched: res.fetched });
+        } else if (res.existing > 0 && res.fetched === 0) {
+          setResult({
+            kind: "uptodate",
+          });
         } else if (res.failed > 0) {
           setResult({
             kind: "error",
@@ -72,8 +78,13 @@ export function RefreshFeedButton({
             Fetched {result.fetched} new article{result.fetched === 1 ? "" : "s"}
           </span>
         )}
+        {result.kind === "uptodate" && (
+          <span className="text-ink-muted">
+            All caught up — sources update every few hours
+          </span>
+        )}
         {result.kind === "empty" && (
-          <span className="text-ink-muted">No new articles right now</span>
+          <span className="text-ink-muted">No articles found from any source</span>
         )}
         {result.kind === "error" && (
           <span className="flex items-center gap-1 text-accent-warn">
