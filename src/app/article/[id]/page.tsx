@@ -136,7 +136,48 @@ export default async function ArticlePage({
           </div>
         )}
 
-        {/* Tabbed content: Analysis | Read | Source */}
+        {/* ──────── Cached summary (if available) ──────── */}
+        {hasCachedSummary && (
+          <section>
+            <div className="mb-3">
+              <h2 className="text-lg font-semibold">Summary</h2>
+              <p className="text-sm text-ink-muted">AI-generated from the article content.</p>
+            </div>
+            <div className="card p-5">
+              <p className="text-base">{articleRaw.summaryLong || articleRaw.summaryShort}</p>
+              {cachedKeyPoints.length > 0 && (
+                <ul className="mt-4 space-y-2 text-sm text-ink-muted">
+                  {cachedKeyPoints.map((kp, i) => (
+                    <li key={i} className="flex gap-2">
+                      <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-brand" />
+                      <span>{kp}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </section>
+        )}
+
+        {/* ──────── Article text: renders instantly from the DB row ──────── */}
+        <section>
+          <div className="mb-3">
+            <h2 className="text-lg font-semibold">Article</h2>
+            <p className="text-sm text-ink-muted">
+              {articleRaw.author ? `By ${articleRaw.author} · ` : ""}
+              {articleRaw.source.name} · {formatDate(articleRaw.publishedAt)}
+            </p>
+          </div>
+          <div className="card p-6 sm:p-8">
+            <ArticleTextBody
+              text={articleRaw.articleText || articleRaw.previewText || articleRaw.summaryLong || ""}
+              url={articleRaw.url}
+              sourceName={articleRaw.source.name}
+            />
+          </div>
+        </section>
+
+        {/* ──────── Phase 2: AI analysis + Source iframe (streamed / tabbed) ──────── */}
         <ArticleReader
           articleUrl={articleRaw.url}
           articleText={articleRaw.articleText || articleRaw.previewText || articleRaw.summaryLong || ""}
@@ -503,5 +544,59 @@ function ShareButton({ url, headline }: { url: string; headline: string }) {
     >
       <Share2 className="h-4 w-4" /> Share
     </a>
+  );
+}
+
+/**
+ * Renders the RSS-extracted article text in a comfortable reader layout.
+ * Shows immediately from the DB row — no AI call needed.
+ */
+function ArticleTextBody({
+  text,
+  url,
+  sourceName,
+}: {
+  text: string;
+  url: string;
+  sourceName: string;
+}) {
+  const isSubstantial = text.length > 800;
+  const paragraphs = text
+    .split(/\n{2,}/)
+    .filter((p) => p.trim().length > 0);
+
+  return (
+    <>
+      {!isSubstantial && (
+        <div className="mb-5 rounded-xl border border-dashed border-line bg-bg-elevated p-3 text-xs text-ink-muted">
+          <span className="font-medium text-ink">Preview.</span> This source provides a
+          limited excerpt via RSS. Full article at the publisher&rsquo;s site.
+        </div>
+      )}
+      <div className="mx-auto max-w-2xl">
+        {paragraphs.length > 1 ? (
+          paragraphs.map((p, i) => (
+            <p
+              key={i}
+              className="mb-4 font-serif text-[17px] leading-[1.75] text-ink"
+            >
+              {p.trim()}
+            </p>
+          ))
+        ) : (
+          <p className="font-serif text-[17px] leading-[1.75] text-ink">{text}</p>
+        )}
+      </div>
+      <div className="mt-6 border-t border-line pt-4 text-center">
+        <a
+          href={url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-sm text-brand hover:underline"
+        >
+          Continue reading at {sourceName} →
+        </a>
+      </div>
+    </>
   );
 }
